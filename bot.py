@@ -4,7 +4,6 @@ import json
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import os
-import time
 
 # CONFIG
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -62,16 +61,6 @@ def is_subscribed(user_id, channel):
         return False
 
 # ========================
-# Clear old messages except latest
-# ========================
-def clear_old_messages(chat_id, keep_last=1):
-    try:
-        history = bot.get_chat_history(chat_id, limit=100)  # Telegram API o'rniga saqlash
-    except:
-        return  # agar ishlamasa o'tkazib yubor
-    # Agar Telegram APIda ishlamasa, eski xabarlar saqlanmaydi
-
-# ========================
 # /start handler
 # ========================
 @bot.message_handler(commands=['start'])
@@ -121,10 +110,9 @@ def check_channels(call):
 # ========================
 # Foydalanuvchi kodi orqali kino yuborish
 # ========================
-@bot.message_handler(func=lambda m: m.text in kino)
+@bot.message_handler(func=lambda m: m.text in kino and m.from_user.id != SUPERADMIN_ID)
 def send_kino_by_code(message):
     user_id = message.from_user.id
-    # Obunani tekshirish
     all_ok = all(is_subscribed(user_id, ch) for ch in channels)
     if not all_ok:
         bot.send_message(user_id, "Siz barcha kanallarga obuna bo‘lmadingiz ❌")
@@ -136,7 +124,6 @@ def send_kino_by_code(message):
     if not file_id:
         bot.send_message(user_id, "Bunday kodli kino mavjud emas!")
         return
-    # Foydalanuvchiga kino media yuborish
     bot.send_message(user_id, "Kino tayyor! 🎬")
     bot.send_video(user_id, file_id)
 
@@ -190,6 +177,8 @@ def admin_rkm_handler(message):
             bot.send_message(user_id, "Hozircha kanal mavjud emas")
         else:
             bot.send_message(user_id, "Kanallar: " + "\n".join(channels))
+    else:
+        return
 
 # ========================
 # Admin step handler: add channel
