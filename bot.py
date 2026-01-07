@@ -1,13 +1,11 @@
 import telebot
 import threading
 import json
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, InputMediaVideo, InputMediaDocument
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import os
 
-# ========================
 # CONFIG
-# ========================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 SUPERADMIN_ID = 1230506568  # Sizning Telegram ID
 PORT = int(os.environ.get("PORT", 4000))
@@ -18,9 +16,7 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ========================
-# JSON FILES
-# ========================
+# JSON files
 CHANNELS_FILE = "channels.json"
 KINO_FILE = "kino.json"
 USERS_FILE = "users.json"
@@ -37,140 +33,135 @@ def save_json(filename, data):
         json.dump(data, f, indent=4)
 
 channels = load_json(CHANNELS_FILE)
-kino = load_json(KINO_FILE)
-users = load_json(USERS_FILE)
-
-# ========================
-# HELPERS
-# ========================
-def is_subscribed(user_id):
-    # Kanalga obuna tekshirish (demo, doim True)
-    return True
+kino = load_json(KINO_FILE)  # { "kod": "file_id" }
+users = load_json(USERS_FILE)  # { user_id: {"id": user_id} }
 
 def add_user(user_id):
     if str(user_id) not in users:
         users[str(user_id)] = {"id": user_id}
         save_json(USERS_FILE, users)
 
-# ========================
-# FAKE WEB SERVER (RENDER FREE PLAN)
-# ========================
+# Fake web server (Render free plan)
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot is running")
 
-def run_server():
-    server = HTTPServer(("", PORT), SimpleHandler)
-    server.serve_forever()
+threading.Thread(target=lambda: HTTPServer(("", PORT), SimpleHandler).serve_forever()).start()
 
-threading.Thread(target=run_server).start()
+# Helper to check subscription
+def is_subscribed(user_id, channel):
+    try:
+        member = bot.get_chat_member(chat_id=channel, user_id=user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except:
+        return False
 
 # ========================
-# START HANDLER (FOYDALANUVCHI VA ADMIN AJRATILGAN)
+# /start handler
 # ========================
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
     add_user(user_id)
 
-    # Agar siz admin bo'lsangiz
     if user_id == SUPERADMIN_ID:
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("Botdagi foydalanuvchilar", callback_data="admin_users"))
-        markup.add(InlineKeyboardButton("Kino qo'shish", callback_data="admin_add_kino"))
-        markup.add(InlineKeyboardButton("Kanal qo'shish", callback_data="admin_add_channel"))
-        markup.add(InlineKeyboardButton("Kanallar ro'yxati", callback_data="admin_channels_list"))
-        bot.reply_to(message, "Salom Admin 👑\nAdmin panel:", reply_markup=markup)
-        return  # foydalanuvchi paneli ishlamaydi
+        # Admin panel RKM
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(KeyboardButton("rkm: foydalanuvchilar"))
+        markup.add(KeyboardButton("rkm: kino qo'shish"))
+        markup.add(KeyboardButton("rkm: kanal qo'shish"))
+        markup.add(KeyboardButton("rkm: kanallar ro'yxati"))
+        bot.send_message(user_id, "Salom Admin 👑\nAdmin panel:", reply_markup=markup)
+        return
 
-    # Oddiy foydalanuvchi paneli
+    # Foydalanuvchi panel
     markup = InlineKeyboardMarkup()
+    for ch in channels:
+        markup.add(InlineKeyboardButton(ch, url=f"https://t.me/{ch.replace('@','')}"))
     markup.add(InlineKeyboardButton("Tekshirish♻️", callback_data="check_channels"))
-    bot.reply_to(
-        message,
-        "Salom 👋, botdan to‘liq foydalanish uchun quyidagi kanallarga obuna bo‘ling va Tekshirish♻️ tugmasini bosing!",
+    bot.send_message(user_id,
+        "Salom 👋\nBotdan to‘liq foydalanish uchun quyidagi kanallarga obuna bo‘ling va Tekshirish♻️ tugmasini bosing!",
         reply_markup=markup
     )
 
 # ========================
-# FOYDALANUVCHI CALLBACK
+# Tekshirish tugmasi
 # ========================
 @bot.callback_query_handler(func=lambda c: c.data == "check_channels")
 def check_channels(call):
     user_id = call.from_user.id
-    if is_subscribed(user_id):
-        bot.send_message(user_id, "Salom, kerakli kino kodini yuboring")
+    all_ok = True
+    for ch in channels:
+        if not is_subscribed(user_id, ch):
+            all_ok = False
+            break
+    if all_ok:
+        msg = bot.send_message(user_id, "Siz barcha kanallarga obuna bo‘lgansiz ✅\nKerakli kino kodini yuboring:")
+        bot.register_next_step_handler(msg, ask_kino_code)
     else:
-        bot.send_message(user_id, "Siz kanallarga obuna bo‘lmadingiz!")
+        bot.send_message(user_id, "Barcha kanallarga obuna bo‘lmadingiz ❌")
 
 # ========================
-# KINO CODE HANDLER
+# Kino kodi so‘rash
 # ========================
-@bot.message_handler(func=lambda m: True)
-def handle_kino_code(message):
+def ask_kino_code(message):
     user_id = message.from_user.id
     code = message.text.strip()
     if code in kino:
-        bot.reply_to(message, f"Kino linki: {kino[code]}")
-    else:
-        bot.reply_to(message, "Bunday kodli kino mavjud emas!")
+        bot.send_message(user_id, "Bunday kod allaqachon mavjud!")
+        return
+    # Endi media yuborishni so‘raysiz
+    msg = bot.send_message(user_id, f"Kino faylini yuboring, bu kodga biriktiramiz: {code}")
+    bot.register_next_step_handler(msg, receive_media, code)
 
-# ========================
-# ADMIN CALLBACK HANDLER
-# ========================
-@bot.callback_query_handler(func=lambda c: c.data.startswith("admin_"))
-def admin_actions(call):
-    user_id = call.from_user.id
-    if user_id != SUPERADMIN_ID:
-        bot.answer_callback_query(call.id, "Siz admin emassiz ❌")
+def receive_media(message, code):
+    user_id = message.from_user.id
+    file_id = None
+
+    # Video yoki document qabul qilish
+    if message.content_type == 'video':
+        file_id = message.video.file_id
+    elif message.content_type == 'document':
+        file_id = message.document.file_id
+    else:
+        msg = bot.send_message(user_id, "Faqat video yoki document yuboring!")
+        bot.register_next_step_handler(msg, receive_media, code)
         return
 
-    data = call.data
+    kino[code] = file_id
+    save_json(KINO_FILE, kino)
+    bot.send_message(user_id, f"Kino muvaffaqiyatli qo‘shildi ✅\nKod: {code}")
 
-    if data == "admin_users":
-        msg = "Foydalanuvchilar:\n" + "\n".join([str(uid) for uid in users])
-        bot.send_message(user_id, msg)
+# ========================
+# Admin RKM handler
+# ========================
+@bot.message_handler(func=lambda m: m.from_user.id == SUPERADMIN_ID)
+def admin_rkm_handler(message):
+    text = message.text
+    user_id = message.from_user.id
 
-    elif data == "admin_add_kino":
-        bot.send_message(user_id, "Kino qo'shish uchun kod va linkni quyidagi formatda yuboring:\nkod|link")
-        bot.register_next_step_handler_by_chat_id(user_id, add_kino_step)
+    if text == "rkm: foydalanuvchilar":
+        bot.send_message(user_id, f"Botdagi obunachilar soni: {len(users)}")
 
-    elif data == "admin_add_channel":
-        bot.send_message(user_id, "Kanal username ni yozing (@username)")
-        bot.register_next_step_handler_by_chat_id(user_id, add_channel_step)
+    elif text == "rkm: kino qo'shish":
+        msg = bot.send_message(user_id, "Kino kodi bilan media fayl qo‘shish uchun kodi kiriting:")
+        bot.register_next_step_handler(msg, ask_kino_code)
 
-    elif data == "admin_channels_list":
+    elif text == "rkm: kanal qo'shish":
+        msg = bot.send_message(user_id, "Kanal username ni kiriting (@username):")
+        bot.register_next_step_handler(msg, add_channel_step)
+
+    elif text == "rkm: kanallar ro'yxati":
         if not channels:
             bot.send_message(user_id, "Hozircha kanal mavjud emas")
-            return
-        for ch in channels:
-            markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton("O'chirish", callback_data=f"remove_channel|{ch}"))
-            bot.send_message(user_id, f"{ch}", reply_markup=markup)
-
-    elif data.startswith("remove_channel|"):
-        ch = data.split("|")[1]
-        if ch in channels:
-            channels.remove(ch)
-            save_json(CHANNELS_FILE, channels)
-            bot.answer_callback_query(call.id, f"{ch} o'chirildi ✅")
         else:
-            bot.answer_callback_query(call.id, "Kanal topilmadi ❌")
+            bot.send_message(user_id, "Kanallar: " + "\n".join(channels))
 
 # ========================
-# ADMIN STEP HANDLERS
+# Admin step handler: add channel
 # ========================
-def add_kino_step(message):
-    try:
-        code, link = message.text.strip().split("|")
-        kino[code] = link
-        save_json(KINO_FILE, kino)
-        bot.send_message(message.from_user.id, f"Kino qo'shildi ✅\nKod: {code}")
-    except:
-        bot.send_message(message.from_user.id, "Format xato! Kod|link tarzida yuboring.")
-
 def add_channel_step(message):
     ch = message.text.strip()
     if not ch.startswith("@"):
@@ -178,9 +169,22 @@ def add_channel_step(message):
     if ch not in channels:
         channels.append(ch)
         save_json(CHANNELS_FILE, channels)
-        bot.send_message(message.from_user.id, f"Kanal qo'shildi ✅ {ch}")
+        bot.send_message(message.from_user.id, f"Kanal qo‘shildi ✅ {ch}")
     else:
-        bot.send_message(message.from_user.id, "Kanal oldin qo'shilgan")
+        bot.send_message(message.from_user.id, "Kanal oldin qo‘shilgan")
+
+# ========================
+# Kino kodi orqali foydalanuvchi so‘rashi
+# ========================
+@bot.message_handler(func=lambda m: m.text in kino)
+def send_kino_by_code(message):
+    code = message.text.strip()
+    file_id = kino.get(code)
+    if not file_id:
+        bot.send_message(message.from_user.id, "Bunday kodli kino mavjud emas!")
+        return
+    bot.send_message(message.from_user.id, "Kino tayyor! 🎬")
+    bot.send_video(message.from_user.id, file_id)
 
 # ========================
 # START BOT
