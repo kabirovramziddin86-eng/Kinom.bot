@@ -3,15 +3,13 @@ import threading
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-# ========================
-# SUPERADMIN ID (kodga bevosita)
-# ========================
-SUPERADMIN_ID = 1230506568  # Sizning Telegram ID
-
-# BOT TOKENni Render.com Environment orqali o'qiymiz
 import os
+
+# ========================
+# CONFIG
+# ========================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+SUPERADMIN_ID = 1230506568  # Sizning Telegram ID
 PORT = int(os.environ.get("PORT", 4000))
 
 if not BOT_TOKEN:
@@ -21,7 +19,7 @@ if not BOT_TOKEN:
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # ========================
-# JSON Files
+# JSON FILES
 # ========================
 CHANNELS_FILE = "channels.json"
 KINO_FILE = "kino.json"
@@ -43,7 +41,7 @@ kino = load_json(KINO_FILE)
 users = load_json(USERS_FILE)
 
 # ========================
-# Helper Functions
+# HELPERS
 # ========================
 def is_subscribed(user_id):
     # Kanalga obuna tekshirish (demo, doim True)
@@ -55,7 +53,7 @@ def add_user(user_id):
         save_json(USERS_FILE, users)
 
 # ========================
-# Fake Web Server (Render free plan)
+# FAKE WEB SERVER (RENDER FREE PLAN)
 # ========================
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -70,7 +68,7 @@ def run_server():
 threading.Thread(target=run_server).start()
 
 # ========================
-# Foydalanuvchi Handlers
+# USER HANDLERS
 # ========================
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -101,10 +99,13 @@ def handle_kino_code(message):
         bot.reply_to(message, "Bunday kodli kino mavjud emas!")
 
 # ========================
-# Admin Panel
+# ADMIN PANEL
 # ========================
-@bot.message_handler(func=lambda m: m.from_user.id == SUPERADMIN_ID)
+@bot.message_handler(commands=['admin'])
 def admin_panel(message):
+    if message.from_user.id != SUPERADMIN_ID:
+        bot.reply_to(message, "Siz admin emassiz ❌")
+        return
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("Botdagi foydalanuvchilar", callback_data="admin_users"))
     markup.add(InlineKeyboardButton("Kino qo'shish", callback_data="admin_add_kino"))
@@ -152,7 +153,7 @@ def admin_actions(call):
             bot.answer_callback_query(call.id, "Kanal topilmadi ❌")
 
 # ========================
-# Admin Step Handlers
+# ADMIN STEP HANDLERS
 # ========================
 def add_kino_step(message):
     try:
@@ -175,7 +176,7 @@ def add_channel_step(message):
         bot.send_message(message.from_user.id, "Kanal oldin qo'shilgan")
 
 # ========================
-# Start Bot
+# START BOT
 # ========================
 print("Bot ishga tushdi...")
 bot.infinity_polling()
