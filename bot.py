@@ -1,19 +1,21 @@
 import telebot
-import os
 import threading
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ========================
-# Environment Variables
+# SUPERADMIN ID (kodga bevosita)
 # ========================
+SUPERADMIN_ID = 1230506568  # Sizning Telegram ID
+
+# BOT TOKENni Render.com Environment orqali o'qiymiz
+import os
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-SUPERADMIN_ID = int(os.environ.get("SUPERADMIN_ID", 0))
 PORT = int(os.environ.get("PORT", 4000))
 
-if not BOT_TOKEN or not SUPERADMIN_ID:
-    print("BOT_TOKEN yoki SUPERADMIN_ID topilmadi!")
+if not BOT_TOKEN:
+    print("BOT_TOKEN topilmadi!")
     exit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -30,7 +32,7 @@ def load_json(filename):
         with open(filename, "r") as f:
             return json.load(f)
     except:
-        return {}
+        return {} if filename != CHANNELS_FILE else []
 
 def save_json(filename, data):
     with open(filename, "w") as f:
@@ -44,10 +46,8 @@ users = load_json(USERS_FILE)
 # Helper Functions
 # ========================
 def is_subscribed(user_id):
-    # Kanalga obuna tekshirish (dummy / faqat misol)
-    # Haqiqiy Telegram API bilan tekshirish kerak bo'lsa channel_id bilan
-    # Render free plan uchun hozir bunday tekshirishni oddiy qilib qoldiramiz
-    return True  # Hozir faqat demo
+    # Kanalga obuna tekshirish (demo, doim True)
+    return True
 
 def add_user(user_id):
     if str(user_id) not in users:
@@ -55,7 +55,7 @@ def add_user(user_id):
         save_json(USERS_FILE, users)
 
 # ========================
-# Fake Web Server (Render.com free plan)
+# Fake Web Server (Render free plan)
 # ========================
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -70,7 +70,7 @@ def run_server():
 threading.Thread(target=run_server).start()
 
 # ========================
-# User Handlers
+# Foydalanuvchi Handlers
 # ========================
 @bot.message_handler(commands=['start'])
 def start(message):
