@@ -68,11 +68,24 @@ def run_server():
 threading.Thread(target=run_server).start()
 
 # ========================
-# USER HANDLERS
+# START HANDLER (FOYDALANUVCHI VA ADMIN AJRATILGAN)
 # ========================
 @bot.message_handler(commands=['start'])
 def start(message):
-    add_user(message.from_user.id)
+    user_id = message.from_user.id
+    add_user(user_id)
+
+    # Agar siz admin bo'lsangiz
+    if user_id == SUPERADMIN_ID:
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("Botdagi foydalanuvchilar", callback_data="admin_users"))
+        markup.add(InlineKeyboardButton("Kino qo'shish", callback_data="admin_add_kino"))
+        markup.add(InlineKeyboardButton("Kanal qo'shish", callback_data="admin_add_channel"))
+        markup.add(InlineKeyboardButton("Kanallar ro'yxati", callback_data="admin_channels_list"))
+        bot.reply_to(message, "Salom Admin 👑\nAdmin panel:", reply_markup=markup)
+        return  # foydalanuvchi paneli ishlamaydi
+
+    # Oddiy foydalanuvchi paneli
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("Tekshirish♻️", callback_data="check_channels"))
     bot.reply_to(
@@ -81,6 +94,9 @@ def start(message):
         reply_markup=markup
     )
 
+# ========================
+# FOYDALANUVCHI CALLBACK
+# ========================
 @bot.callback_query_handler(func=lambda c: c.data == "check_channels")
 def check_channels(call):
     user_id = call.from_user.id
@@ -89,6 +105,9 @@ def check_channels(call):
     else:
         bot.send_message(user_id, "Siz kanallarga obuna bo‘lmadingiz!")
 
+# ========================
+# KINO CODE HANDLER
+# ========================
 @bot.message_handler(func=lambda m: True)
 def handle_kino_code(message):
     user_id = message.from_user.id
@@ -99,20 +118,8 @@ def handle_kino_code(message):
         bot.reply_to(message, "Bunday kodli kino mavjud emas!")
 
 # ========================
-# ADMIN PANEL
+# ADMIN CALLBACK HANDLER
 # ========================
-@bot.message_handler(commands=['admin'])
-def admin_panel(message):
-    if message.from_user.id != SUPERADMIN_ID:
-        bot.reply_to(message, "Siz admin emassiz ❌")
-        return
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Botdagi foydalanuvchilar", callback_data="admin_users"))
-    markup.add(InlineKeyboardButton("Kino qo'shish", callback_data="admin_add_kino"))
-    markup.add(InlineKeyboardButton("Kanal qo'shish", callback_data="admin_add_channel"))
-    markup.add(InlineKeyboardButton("Kanallar ro'yxati", callback_data="admin_channels_list"))
-    bot.reply_to(message, "Admin panel:", reply_markup=markup)
-
 @bot.callback_query_handler(func=lambda c: c.data.startswith("admin_"))
 def admin_actions(call):
     user_id = call.from_user.id
