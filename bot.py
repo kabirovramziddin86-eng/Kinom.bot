@@ -4,6 +4,7 @@ import json
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import os
+import time
 
 # CONFIG
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -61,6 +62,16 @@ def is_subscribed(user_id, channel):
         return False
 
 # ========================
+# Clear old messages except latest
+# ========================
+def clear_old_messages(chat_id, keep_last=1):
+    try:
+        history = bot.get_chat_history(chat_id, limit=100)  # Telegram API o'rniga saqlash
+    except:
+        return  # agar ishlamasa o'tkazib yubor
+    # Agar Telegram APIda ishlamasa, eski xabarlar saqlanmaydi
+
+# ========================
 # /start handler
 # ========================
 @bot.message_handler(commands=['start'])
@@ -68,7 +79,6 @@ def start(message):
     user_id = message.from_user.id
     add_user(user_id)
 
-    # Admin panel
     if user_id == SUPERADMIN_ID:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(KeyboardButton("👥 Foydalanuvchilar"))
@@ -78,7 +88,7 @@ def start(message):
         bot.send_message(user_id, "Salom Admin 👑\nAdmin panel:", reply_markup=markup)
         return
 
-    # Foydalanuvchi: kanal linklari + tekshirish
+    # Foydalanuvchi paneli
     send_channel_buttons(user_id)
 
 # ========================
@@ -103,37 +113,32 @@ def check_channels(call):
     all_ok = all(is_subscribed(user_id, ch) for ch in channels)
     if all_ok:
         bot.send_message(user_id, "Siz barcha kanallarga obuna bo‘lgansiz ✅")
-        msg = bot.send_message(user_id, "Kerakli kino kodini yuboring:")
-        bot.register_next_step_handler(msg, ask_kino_code)
+        bot.send_message(user_id, "Kerakli kino kodini yuboring:")
     else:
         bot.send_message(user_id, "Barcha kanallarga obuna bo‘lmadingiz ❌")
         send_channel_buttons(user_id)
 
 # ========================
-# Kino kodi so‘rash (foydalanuvchi)
+# Foydalanuvchi kodi orqali kino yuborish
 # ========================
-def ask_kino_code(message):
+@bot.message_handler(func=lambda m: m.text in kino)
+def send_kino_by_code(message):
     user_id = message.from_user.id
-    code = message.text.strip()
-    msg = bot.send_message(user_id, f"Kino faylini yuboring, bu kodga biriktiramiz: {code}")
-    bot.register_next_step_handler(msg, receive_media_user, code)
-
-def receive_media_user(message, code):
-    user_id = message.from_user.id
-    file_id = None
-
-    if message.content_type == 'video':
-        file_id = message.video.file_id
-    elif message.content_type == 'document':
-        file_id = message.document.file_id
-    else:
-        msg = bot.send_message(user_id, "Faqat video yoki document yuboring!")
-        bot.register_next_step_handler(msg, receive_media_user, code)
+    # Obunani tekshirish
+    all_ok = all(is_subscribed(user_id, ch) for ch in channels)
+    if not all_ok:
+        bot.send_message(user_id, "Siz barcha kanallarga obuna bo‘lmadingiz ❌")
+        send_channel_buttons(user_id)
         return
 
-    kino[code] = file_id
-    save_json(KINO_FILE, kino)
-    bot.send_message(user_id, f"Kino tayyor! 🎬")
+    code = message.text.strip()
+    file_id = kino.get(code)
+    if not file_id:
+        bot.send_message(user_id, "Bunday kodli kino mavjud emas!")
+        return
+    # Foydalanuvchiga kino media yuborish
+    bot.send_message(user_id, "Kino tayyor! 🎬")
+    bot.send_video(user_id, file_id)
 
 # ========================
 # Admin kodi bilan kino qo'shish
@@ -199,27 +204,6 @@ def add_channel_step(message):
         bot.send_message(message.from_user.id, f"Kanal qo‘shildi ✅ {ch}")
     else:
         bot.send_message(message.from_user.id, "Kanal oldin qo‘shilgan")
-
-# ========================
-# Foydalanuvchi kodi orqali kino yuborish
-# ========================
-@bot.message_handler(func=lambda m: m.text in kino)
-def send_kino_by_code(message):
-    user_id = message.from_user.id
-    # Obunani tekshirish
-    all_ok = all(is_subscribed(user_id, ch) for ch in channels)
-    if not all_ok:
-        bot.send_message(user_id, "Siz barcha kanallarga obuna bo‘lmadingiz ❌")
-        send_channel_buttons(user_id)
-        return
-
-    code = message.text.strip()
-    file_id = kino.get(code)
-    if not file_id:
-        bot.send_message(user_id, "Bunday kodli kino mavjud emas!")
-        return
-    bot.send_message(user_id, "Kino tayyor! 🎬")
-    bot.send_video(user_id, file_id)
 
 # ========================
 # START BOT
